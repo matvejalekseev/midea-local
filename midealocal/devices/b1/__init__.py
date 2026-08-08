@@ -7,7 +7,7 @@ from typing import Any, ClassVar, Unpack
 from midealocal.const import DeviceType
 from midealocal.device import MideaDevice, MideaDeviceInitKwargs
 
-from .message import MessageB1Response, MessageQuery
+from .message import MessageB1Response, MessageQuery, MessageQueryX01
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -57,9 +57,19 @@ class MideaB1Device(MideaDevice):
             },
         )
 
-    def build_query(self) -> list[MessageQuery]:
-        """Midea B1 device build query."""
-        return [MessageQuery(self._message_protocol_version)]
+    def build_query(self) -> list[MessageQuery | MessageQueryX01]:
+        """Midea B1 device build query.
+
+        Some B1 devices report the X00 ``MessageQuery`` as an unsupported
+        protocol and never respond to it, leaving the device with no
+        working query at all. X01 is included as a diagnostic fallback -
+        see ``MessageQueryX01`` for why, and ``MessageB1Response`` for why
+        its response isn't parsed yet.
+        """
+        return [
+            MessageQuery(self._message_protocol_version),
+            MessageQueryX01(self._message_protocol_version),
+        ]
 
     def process_message(self, msg: bytes) -> dict[str, Any]:
         """Midea B1 device process message."""
