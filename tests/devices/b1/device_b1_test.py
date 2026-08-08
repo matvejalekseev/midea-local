@@ -4,7 +4,11 @@ import pytest
 
 from midealocal.const import DeviceType, ProtocolVersion
 from midealocal.devices.b1 import DeviceAttributes, MideaB1Device
-from midealocal.devices.b1.message import MessageB1Base, MessageQuery
+from midealocal.devices.b1.message import (
+    MessageB1Base,
+    MessageQuery,
+    MessageQueryX01,
+)
 from midealocal.message import ListTypes, MessageType
 
 
@@ -42,8 +46,9 @@ class TestMideaB1Device:
     def test_build_query(self) -> None:
         """Test build query."""
         queries = self.device.build_query()
-        assert len(queries) == 1
+        assert len(queries) == 2
         assert isinstance(queries[0], MessageQuery)
+        assert isinstance(queries[1], MessageQueryX01)
 
     def test_set_attribute(self) -> None:
         """Test set attribute is a no-op."""
@@ -100,6 +105,25 @@ class TestMideaB1Device:
         result = self.device.process_message(bytes(header + body + bytearray(1)))
         assert result == {}
 
+    def test_x01_response_not_parsed(self) -> None:
+        """An X01 response's layout isn't known yet, so it must be a no-op.
+
+        Confirms it doesn't raise and doesn't touch existing attributes,
+        even though the body happens to carry byte values that would
+        look like real door/status data under the X00 layout.
+        """
+        header = bytearray(
+            [0xAA, 0x00, DeviceType.B1] + [0x00] * 5 + [ProtocolVersion.V1],
+        ) + bytearray([MessageType.query])
+        body = bytearray(20)
+        body[0] = 0x01  # X01 marker
+        body[1] = 0x03  # would be status "Working" under the X00 layout
+        body[16] = 0x1E  # would be door + tank/water flags under X00
+        result = self.device.process_message(bytes(header + body + bytearray(1)))
+        assert result == {}
+        assert self.device.attributes[DeviceAttributes.door] is False
+        assert self.device.attributes[DeviceAttributes.status] is None
+
 
 class TestMessageB1Base:
     """Test B1 Message Base."""
@@ -122,3 +146,12 @@ class TestMessageQuery:
         """Test query body."""
         msg = MessageQuery(protocol_version=ProtocolVersion.V1)
         assert msg.body == bytearray([0x00])
+
+
+class TestMessageQueryX01:
+    """Test B1 Message Query X01."""
+
+    def test_query_body(self) -> None:
+        """Test query body."""
+        msg = MessageQueryX01(protocol_version=ProtocolVersion.V1)
+        assert msg.body == bytearray([0x01])

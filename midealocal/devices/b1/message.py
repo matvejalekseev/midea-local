@@ -48,6 +48,32 @@ class MessageQuery(MessageB1Base):
         return bytearray([])
 
 
+class MessageQueryX01(MessageB1Base):
+    """B1 message query, X01 body variant.
+
+    Some B1 devices report ``MessageQuery`` (the X00 body) as an
+    unsupported protocol and never respond to it at all, leaving the
+    device with no working query (see the B0 device, which has this same
+    X00 query plus X01/X31 fallbacks that do work on the model we've
+    tested against). This is the equivalent X01 fallback for B1, to find
+    out whether an otherwise-unresponsive oven answers it instead. The
+    response body layout is not yet known, so ``MessageB1Response``
+    intentionally does not attempt to parse it yet.
+    """
+
+    def __init__(self, protocol_version: int) -> None:
+        """Initialize B1 message query X01."""
+        super().__init__(
+            protocol_version=protocol_version,
+            message_type=MessageType.query,
+            body_type=ListTypes.X01,
+        )
+
+    @property
+    def _body(self) -> bytearray:
+        return bytearray([])
+
+
 class B1MessageBody(MessageBody):
     """B1 message body."""
 
@@ -73,6 +99,15 @@ class MessageB1Response(MessageResponse):
     def __init__(self, message: bytes) -> None:
         """Initialize B1 message response."""
         super().__init__(bytearray(message))
-        if self.message_type in [MessageType.notify1, MessageType.query]:
+        # B1MessageBody's byte offsets were reverse-engineered from X00
+        # responses specifically. An X01 response (see MessageQueryX01)
+        # is a different, not yet reverse-engineered layout - decoding it
+        # with the X00 offsets would silently produce garbage the way an
+        # analogous mismatch did for the B0 device, so leave it unparsed
+        # until the real X01 layout is known.
+        if (
+            self.message_type in [MessageType.notify1, MessageType.query]
+            and self.body_type == ListTypes.X00
+        ):
             self.set_body(B1MessageBody(super().body))
         self.set_attr()
